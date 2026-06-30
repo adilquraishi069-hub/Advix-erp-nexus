@@ -1,0 +1,325 @@
+import Database from 'better-sqlite3';
+import path from 'path';
+import fs from 'fs';
+
+const DB_PATH = path.join(process.cwd(), 'advix_pharmacy.db');
+
+let db: Database.Database | null = null;
+
+export function getDb(): Database.Database {
+  if (!db) {
+    db = new Database(DB_PATH);
+    db.pragma('journal_mode = WAL');
+    db.pragma('foreign_keys = ON');
+    initializeSchema(db);
+  }
+  return db;
+}
+
+function initializeSchema(db: Database.Database) {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS pharmacy_profile (
+      pharmacy_id TEXT PRIMARY KEY DEFAULT 'PHR-000001',
+      pharmacy_name TEXT NOT NULL DEFAULT 'ADVIX Pharmacy',
+      logo TEXT,
+      license_no TEXT,
+      owner_name TEXT NOT NULL DEFAULT 'Owner',
+      country TEXT NOT NULL DEFAULT 'Afghanistan',
+      city TEXT NOT NULL DEFAULT 'Kabul',
+      address TEXT NOT NULL DEFAULT 'Main Street',
+      phone TEXT,
+      email TEXT,
+      default_currency TEXT NOT NULL DEFAULT 'AFN',
+      default_language TEXT NOT NULL DEFAULT 'Pashto',
+      status TEXT NOT NULL DEFAULT 'Active',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS medicine_categories (
+      category_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      category_name TEXT NOT NULL UNIQUE,
+      status TEXT NOT NULL DEFAULT 'Active'
+    );
+
+    CREATE TABLE IF NOT EXISTS units (
+      unit_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      unit_name TEXT NOT NULL UNIQUE,
+      base_unit TEXT,
+      conversion_factor REAL DEFAULT 1,
+      status TEXT NOT NULL DEFAULT 'Active'
+    );
+
+    CREATE TABLE IF NOT EXISTS manufacturers (
+      manufacturer_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      manufacturer_name TEXT NOT NULL,
+      country TEXT,
+      status TEXT NOT NULL DEFAULT 'Active'
+    );
+
+    CREATE TABLE IF NOT EXISTS medicines (
+      medicine_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      medicine_code TEXT NOT NULL UNIQUE,
+      barcode TEXT UNIQUE,
+      medicine_name TEXT NOT NULL,
+      generic_name TEXT NOT NULL,
+      brand_name TEXT,
+      category_id INTEGER REFERENCES medicine_categories(category_id),
+      dosage_form TEXT NOT NULL DEFAULT 'Tablet',
+      strength TEXT,
+      unit_id INTEGER REFERENCES units(unit_id),
+      pack_size INTEGER DEFAULT 1,
+      manufacturer_id INTEGER REFERENCES manufacturers(manufacturer_id),
+      country_origin TEXT,
+      default_sale_price REAL DEFAULT 0,
+      min_stock REAL DEFAULT 10,
+      current_stock REAL DEFAULT 0,
+      average_cost REAL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'Active',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS suppliers (
+      supplier_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      supplier_name TEXT NOT NULL,
+      company_name TEXT,
+      phone TEXT,
+      email TEXT,
+      address TEXT,
+      country TEXT,
+      opening_balance REAL DEFAULT 0,
+      credit_limit REAL DEFAULT 0,
+      current_balance REAL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'Active',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS purchases (
+      purchase_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      purchase_code TEXT NOT NULL UNIQUE,
+      supplier_id INTEGER REFERENCES suppliers(supplier_id),
+      invoice_no TEXT,
+      purchase_date DATE NOT NULL,
+      currency TEXT DEFAULT 'AFN',
+      subtotal REAL DEFAULT 0,
+      discount REAL DEFAULT 0,
+      tax REAL DEFAULT 0,
+      transport_cost REAL DEFAULT 0,
+      other_cost REAL DEFAULT 0,
+      grand_total REAL DEFAULT 0,
+      paid_amount REAL DEFAULT 0,
+      balance REAL DEFAULT 0,
+      notes TEXT,
+      status TEXT NOT NULL DEFAULT 'Draft',
+      created_by TEXT DEFAULT 'Admin',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS purchase_lines (
+      line_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      purchase_id INTEGER REFERENCES purchases(purchase_id),
+      medicine_id INTEGER REFERENCES medicines(medicine_id),
+      batch_no TEXT NOT NULL,
+      production_date DATE,
+      expiry_date DATE NOT NULL,
+      qty REAL NOT NULL,
+      purchase_unit TEXT DEFAULT 'Box',
+      units_per_pack REAL DEFAULT 1,
+      purchase_price REAL NOT NULL,
+      extra_cost_share REAL DEFAULT 0,
+      final_unit_cost REAL DEFAULT 0,
+      sale_price REAL DEFAULT 0,
+      line_total REAL DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS batches (
+      batch_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      medicine_id INTEGER REFERENCES medicines(medicine_id),
+      batch_no TEXT NOT NULL,
+      supplier_id INTEGER REFERENCES suppliers(supplier_id),
+      purchase_id INTEGER REFERENCES purchases(purchase_id),
+      production_date DATE,
+      expiry_date DATE NOT NULL,
+      initial_qty_base REAL NOT NULL,
+      remaining_qty_base REAL NOT NULL,
+      final_unit_cost REAL DEFAULT 0,
+      sale_price REAL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'Active',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS stock_ledger (
+      ledger_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      medicine_id INTEGER REFERENCES medicines(medicine_id),
+      batch_id INTEGER REFERENCES batches(batch_id),
+      transaction_type TEXT NOT NULL,
+      qty_in REAL DEFAULT 0,
+      qty_out REAL DEFAULT 0,
+      balance_qty REAL DEFAULT 0,
+      reference_id INTEGER,
+      reference_type TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS customers (
+      customer_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      full_name TEXT NOT NULL,
+      phone TEXT,
+      address TEXT,
+      opening_balance REAL DEFAULT 0,
+      credit_limit REAL DEFAULT 0,
+      current_balance REAL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'Active',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS doctors (
+      doctor_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      doctor_name TEXT NOT NULL,
+      specialization TEXT,
+      phone TEXT,
+      commission_percent REAL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'Active'
+    );
+
+    CREATE TABLE IF NOT EXISTS sales (
+      sale_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      sale_code TEXT NOT NULL UNIQUE,
+      customer_id INTEGER REFERENCES customers(customer_id),
+      patient_name TEXT,
+      doctor_id INTEGER REFERENCES doctors(doctor_id),
+      sale_date DATE NOT NULL,
+      payment_method TEXT DEFAULT 'Cash',
+      subtotal REAL DEFAULT 0,
+      discount REAL DEFAULT 0,
+      tax REAL DEFAULT 0,
+      grand_total REAL DEFAULT 0,
+      paid_amount REAL DEFAULT 0,
+      balance REAL DEFAULT 0,
+      notes TEXT,
+      status TEXT NOT NULL DEFAULT 'Draft',
+      created_by TEXT DEFAULT 'Admin',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS sale_lines (
+      line_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      sale_id INTEGER REFERENCES sales(sale_id),
+      medicine_id INTEGER REFERENCES medicines(medicine_id),
+      batch_id INTEGER REFERENCES batches(batch_id),
+      qty REAL NOT NULL,
+      sale_unit TEXT DEFAULT 'Box',
+      base_qty REAL NOT NULL,
+      sale_price REAL NOT NULL,
+      average_cost REAL DEFAULT 0,
+      line_total REAL DEFAULT 0,
+      profit_loss REAL DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS sale_returns (
+      return_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      sale_id INTEGER REFERENCES sales(sale_id),
+      return_date DATE NOT NULL,
+      return_amount REAL DEFAULT 0,
+      reason TEXT,
+      status TEXT DEFAULT 'Posted',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS purchase_returns (
+      return_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      purchase_id INTEGER REFERENCES purchases(purchase_id),
+      supplier_id INTEGER REFERENCES suppliers(supplier_id),
+      return_date DATE NOT NULL,
+      return_amount REAL DEFAULT 0,
+      reason TEXT,
+      status TEXT DEFAULT 'Posted',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS damage_waste (
+      damage_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      medicine_id INTEGER REFERENCES medicines(medicine_id),
+      batch_id INTEGER REFERENCES batches(batch_id),
+      qty REAL NOT NULL,
+      reason TEXT NOT NULL,
+      loss_amount REAL DEFAULT 0,
+      created_by TEXT DEFAULT 'Admin',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS expenses (
+      expense_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      expense_type TEXT NOT NULL,
+      amount REAL NOT NULL,
+      currency TEXT DEFAULT 'AFN',
+      expense_date DATE NOT NULL,
+      paid_by TEXT,
+      note TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS users (
+      user_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      full_name TEXT NOT NULL,
+      email TEXT NOT NULL UNIQUE,
+      password_hash TEXT NOT NULL DEFAULT 'admin123',
+      role TEXT NOT NULL DEFAULT 'Admin',
+      status TEXT NOT NULL DEFAULT 'Active',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS audit_logs (
+      log_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER,
+      action TEXT NOT NULL,
+      table_name TEXT,
+      record_id INTEGER,
+      details TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
+  // Seed initial data if tables are empty
+  const profileCount = db.prepare('SELECT COUNT(*) as cnt FROM pharmacy_profile').get() as { cnt: number };
+  if (profileCount.cnt === 0) {
+    db.prepare(`INSERT INTO pharmacy_profile (pharmacy_id, pharmacy_name, owner_name, country, city, address, default_currency) VALUES (?, ?, ?, ?, ?, ?, ?)`).run(
+      'PHR-000001', 'ADVIX Pharmacy', 'Administrator', 'Afghanistan', 'Kabul', 'Main Street, Kabul', 'AFN'
+    );
+  }
+
+  const catCount = db.prepare('SELECT COUNT(*) as cnt FROM medicine_categories').get() as { cnt: number };
+  if (catCount.cnt === 0) {
+    const cats = ['Tablet', 'Capsule', 'Syrup', 'Injection', 'Cream/Ointment', 'Drops', 'Medical Equipment', 'Supplement/OTC', 'Other'];
+    const insertCat = db.prepare('INSERT INTO medicine_categories (category_name) VALUES (?)');
+    cats.forEach(c => insertCat.run(c));
+  }
+
+  const unitCount = db.prepare('SELECT COUNT(*) as cnt FROM units').get() as { cnt: number };
+  if (unitCount.cnt === 0) {
+    const units = [
+      { name: 'Box', base: 'Piece', factor: 1 },
+      { name: 'Strip', base: 'Tablet', factor: 10 },
+      { name: 'Tablet', base: 'Tablet', factor: 1 },
+      { name: 'Bottle', base: 'Bottle', factor: 1 },
+      { name: 'Vial', base: 'Vial', factor: 1 },
+      { name: 'Piece', base: 'Piece', factor: 1 },
+      { name: 'Pack', base: 'Pack', factor: 1 },
+    ];
+    const insertUnit = db.prepare('INSERT INTO units (unit_name, base_unit, conversion_factor) VALUES (?, ?, ?)');
+    units.forEach(u => insertUnit.run(u.name, u.base, u.factor));
+  }
+
+  const userCount = db.prepare('SELECT COUNT(*) as cnt FROM users').get() as { cnt: number };
+  if (userCount.cnt === 0) {
+    db.prepare('INSERT INTO users (full_name, email, password_hash, role) VALUES (?, ?, ?, ?)').run(
+      'Administrator', 'admin@advix.com', 'admin123', 'Owner'
+    );
+  }
+}
+
+export function generateCode(prefix: string, table: string, column: string): string {
+  const db = getDb();
+  const row = db.prepare(`SELECT MAX(CAST(SUBSTR(${column}, LENGTH(?) + 2) AS INTEGER)) as max_num FROM ${table} WHERE ${column} LIKE ?`).get(prefix, `${prefix}-%`) as { max_num: number | null };
+  const nextNum = (row?.max_num || 0) + 1;
+  return `${prefix}-${String(nextNum).padStart(6, '0')}`;
+}
