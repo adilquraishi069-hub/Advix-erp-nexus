@@ -277,6 +277,168 @@ function initializeSchema(db: Database.Database) {
       details TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
+
+    CREATE TABLE IF NOT EXISTS payments (
+      payment_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      payment_code TEXT NOT NULL UNIQUE,
+      payment_type TEXT NOT NULL DEFAULT 'Supplier',
+      party_id INTEGER,
+      party_type TEXT,
+      reference_no TEXT,
+      amount REAL NOT NULL DEFAULT 0,
+      payment_method TEXT DEFAULT 'Cash',
+      payment_date DATE NOT NULL,
+      bank_name TEXT,
+      cheque_no TEXT,
+      notes TEXT,
+      created_by TEXT DEFAULT 'Admin',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS sale_return_lines (
+      return_line_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      return_id INTEGER REFERENCES sale_returns(return_id),
+      medicine_id INTEGER REFERENCES medicines(medicine_id),
+      batch_id INTEGER REFERENCES batches(batch_id),
+      qty REAL NOT NULL,
+      sale_price REAL DEFAULT 0,
+      line_total REAL DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS purchase_return_lines (
+      return_line_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      return_id INTEGER REFERENCES purchase_returns(return_id),
+      medicine_id INTEGER REFERENCES medicines(medicine_id),
+      batch_id INTEGER REFERENCES batches(batch_id),
+      qty REAL NOT NULL,
+      purchase_price REAL DEFAULT 0,
+      line_total REAL DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS stock_adjustments (
+      adjustment_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      adjustment_code TEXT NOT NULL UNIQUE,
+      medicine_id INTEGER REFERENCES medicines(medicine_id),
+      batch_id INTEGER REFERENCES batches(batch_id),
+      adjustment_type TEXT NOT NULL DEFAULT 'Add',
+      qty_before REAL DEFAULT 0,
+      qty_adjusted REAL NOT NULL,
+      qty_after REAL DEFAULT 0,
+      reason TEXT NOT NULL,
+      adjusted_by TEXT DEFAULT 'Admin',
+      adjusted_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS prescriptions (
+      prescription_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      prescription_code TEXT NOT NULL UNIQUE,
+      doctor_id INTEGER REFERENCES doctors(doctor_id),
+      customer_id INTEGER REFERENCES customers(customer_id),
+      patient_name TEXT,
+      prescription_date DATE NOT NULL,
+      diagnosis TEXT,
+      notes TEXT,
+      status TEXT DEFAULT 'Active',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS prescription_lines (
+      line_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      prescription_id INTEGER REFERENCES prescriptions(prescription_id),
+      medicine_id INTEGER REFERENCES medicines(medicine_id),
+      dosage TEXT,
+      frequency TEXT,
+      duration TEXT,
+      qty INTEGER DEFAULT 1,
+      instructions TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS price_lists (
+      price_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      medicine_id INTEGER REFERENCES medicines(medicine_id),
+      price_type TEXT DEFAULT 'Retail',
+      price REAL NOT NULL DEFAULT 0,
+      min_qty REAL DEFAULT 1,
+      valid_from DATE,
+      valid_to DATE,
+      is_active INTEGER DEFAULT 1,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS daily_closings (
+      closing_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      closing_date DATE NOT NULL UNIQUE,
+      opening_cash REAL DEFAULT 0,
+      cash_sales REAL DEFAULT 0,
+      card_sales REAL DEFAULT 0,
+      credit_sales REAL DEFAULT 0,
+      total_returns REAL DEFAULT 0,
+      total_expenses REAL DEFAULT 0,
+      closing_cash REAL DEFAULT 0,
+      difference REAL DEFAULT 0,
+      notes TEXT,
+      status TEXT DEFAULT 'Open',
+      closed_by TEXT DEFAULT 'Admin',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS discount_vouchers (
+      voucher_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      voucher_code TEXT NOT NULL UNIQUE,
+      voucher_name TEXT NOT NULL,
+      discount_type TEXT DEFAULT 'Percent',
+      discount_value REAL NOT NULL DEFAULT 0,
+      min_purchase REAL DEFAULT 0,
+      max_usage INTEGER DEFAULT 1,
+      used_count INTEGER DEFAULT 0,
+      valid_from DATE,
+      valid_to DATE,
+      is_active INTEGER DEFAULT 1,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS warehouse_locations (
+      location_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      rack_no TEXT NOT NULL,
+      shelf_no TEXT NOT NULL,
+      medicine_id INTEGER REFERENCES medicines(medicine_id),
+      batch_id INTEGER REFERENCES batches(batch_id),
+      qty REAL DEFAULT 0,
+      notes TEXT,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS drug_info (
+      drug_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      generic_name TEXT NOT NULL UNIQUE,
+      drug_class TEXT,
+      mechanism TEXT,
+      indications TEXT,
+      contraindications TEXT,
+      side_effects TEXT,
+      interactions TEXT,
+      pregnancy_category TEXT,
+      storage_conditions TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS alert_settings (
+      setting_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      alert_type TEXT NOT NULL UNIQUE,
+      threshold_value REAL DEFAULT 0,
+      is_enabled INTEGER DEFAULT 1,
+      notification_method TEXT DEFAULT 'Dashboard',
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS backups (
+      backup_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      backup_name TEXT NOT NULL,
+      backup_path TEXT,
+      backup_size INTEGER DEFAULT 0,
+      created_by TEXT DEFAULT 'Admin',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
   `);
 
   // Seed initial data if tables are empty
@@ -314,6 +476,19 @@ function initializeSchema(db: Database.Database) {
     db.prepare('INSERT INTO users (full_name, email, password_hash, role) VALUES (?, ?, ?, ?)').run(
       'Administrator', 'admin@advix.com', 'admin123', 'Owner'
     );
+  }
+
+  const alertCount = db.prepare('SELECT COUNT(*) as cnt FROM alert_settings').get() as { cnt: number };
+  if (alertCount.cnt === 0) {
+    const alerts = [
+      ['Low Stock', 10, 1, 'Dashboard'],
+      ['Expiry 90 Days', 90, 1, 'Dashboard'],
+      ['Expiry 30 Days', 30, 1, 'Dashboard'],
+      ['Expiry 10 Days', 10, 1, 'Dashboard'],
+      ['Expired', 0, 1, 'Dashboard'],
+    ];
+    const insertAlert = db.prepare('INSERT INTO alert_settings (alert_type, threshold_value, is_enabled, notification_method) VALUES (?, ?, ?, ?)');
+    alerts.forEach(a => insertAlert.run(...a));
   }
 }
 
