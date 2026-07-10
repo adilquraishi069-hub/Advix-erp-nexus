@@ -4,8 +4,8 @@ import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, Pill, ShoppingCart, TrendingUp, Package,
   UserCircle, Stethoscope, BarChart3, Settings,
-  AlertTriangle, ArrowLeftRight, Trash2, ChevronDown, ChevronRight,
-  CreditCard, MapPin, FlaskConical, Bell, RotateCw
+  AlertTriangle, ArrowLeftRight, ChevronDown, ChevronRight,
+  CreditCard, MapPin, Bell, Users
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -26,8 +26,10 @@ const navItems = [
     children: [
       { href: '/purchases', label: 'د خریدونو لیست' },
       { href: '/purchases/new', label: 'نوی خریداری' },
+      { href: '/purchase-orders', label: 'Purchase Orders' },
       { href: '/suppliers', label: 'Suppliers' },
       { href: '/purchase-returns', label: 'Purchase Returns' },
+      { href: '/reorder', label: 'Reorder Suggestions' },
     ]
   },
   {
@@ -39,6 +41,9 @@ const navItems = [
       { href: '/sale-returns', label: 'Sale Returns' },
       { href: '/prescriptions', label: 'Prescriptions' },
       { href: '/discounts', label: 'Discount Vouchers' },
+      { href: '/loyalty', label: 'Loyalty Points' },
+      { href: '/targets', label: 'Sales Targets' },
+      { href: '/substitutes', label: 'Substitutes' },
     ]
   },
   { href: '/inventory', label: 'Inventory', icon: Package },
@@ -50,6 +55,7 @@ const navItems = [
       { href: '/ledger', label: 'Account Ledger' },
       { href: '/expenses', label: 'Expenses' },
       { href: '/daily-closing', label: 'Daily Closing' },
+      { href: '/financial', label: 'Financial Overview' },
     ]
   },
   {
@@ -57,13 +63,22 @@ const navItems = [
     children: [
       { href: '/stock-adjustment', label: 'Stock Adjustment' },
       { href: '/locations', label: 'Warehouse Locations' },
+      { href: '/transfers', label: 'Stock Transfers' },
       { href: '/damage', label: 'Damage/Waste' },
+    ]
+  },
+  {
+    label: 'HR & Payroll', icon: Users,
+    children: [
+      { href: '/employees', label: 'Employees' },
+      { href: '/payroll', label: 'Payroll' },
     ]
   },
   { href: '/returns', label: 'Returns Overview', icon: ArrowLeftRight },
   { href: '/reports', label: 'Reports', icon: BarChart3 },
   { href: '/doctors', label: 'Doctors', icon: Stethoscope },
   { href: '/users', label: 'Users', icon: UserCircle },
+  { href: '/notifications', label: 'Notifications', icon: Bell },
   {
     label: 'System', icon: Settings,
     children: [
@@ -77,7 +92,7 @@ const navItems = [
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const [expanded, setExpanded] = useState<string[]>(['Sales / POS', 'Medicines', 'Purchase', 'Accounts']);
+  const [expanded, setExpanded] = useState<string[]>(['Sales / POS', 'Medicines', 'Purchase', 'Accounts', 'HR & Payroll']);
 
   const toggleExpand = (label: string) => {
     setExpanded(prev =>

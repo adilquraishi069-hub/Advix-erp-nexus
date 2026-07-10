@@ -439,6 +439,122 @@ function initializeSchema(db: Database.Database) {
       created_by TEXT DEFAULT 'Admin',
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
+
+    CREATE TABLE IF NOT EXISTS employees (
+      employee_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      employee_code TEXT NOT NULL UNIQUE,
+      full_name TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'Staff',
+      phone TEXT,
+      email TEXT,
+      address TEXT,
+      basic_salary REAL DEFAULT 0,
+      joining_date DATE,
+      leaving_date DATE,
+      status TEXT DEFAULT 'Active',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS payroll (
+      payroll_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      payroll_code TEXT NOT NULL UNIQUE,
+      employee_id INTEGER REFERENCES employees(employee_id),
+      month INTEGER NOT NULL,
+      year INTEGER NOT NULL,
+      basic_salary REAL DEFAULT 0,
+      allowances REAL DEFAULT 0,
+      deductions REAL DEFAULT 0,
+      net_salary REAL DEFAULT 0,
+      payment_method TEXT DEFAULT 'Cash',
+      payment_date DATE,
+      status TEXT DEFAULT 'Draft',
+      notes TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS purchase_orders (
+      po_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      po_code TEXT NOT NULL UNIQUE,
+      supplier_id INTEGER REFERENCES suppliers(supplier_id),
+      po_date DATE NOT NULL,
+      required_date DATE,
+      total_amount REAL DEFAULT 0,
+      notes TEXT,
+      status TEXT DEFAULT 'Draft',
+      created_by TEXT DEFAULT 'Admin',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS purchase_order_lines (
+      po_line_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      po_id INTEGER REFERENCES purchase_orders(po_id),
+      medicine_id INTEGER REFERENCES medicines(medicine_id),
+      qty_ordered REAL NOT NULL,
+      unit_price REAL DEFAULT 0,
+      line_total REAL DEFAULT 0,
+      qty_received REAL DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS loyalty_points (
+      point_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      customer_id INTEGER REFERENCES customers(customer_id),
+      transaction_type TEXT DEFAULT 'Earn',
+      points INTEGER NOT NULL DEFAULT 0,
+      reference_id INTEGER,
+      reference_type TEXT,
+      balance INTEGER DEFAULT 0,
+      notes TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS stock_transfers (
+      transfer_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      transfer_code TEXT NOT NULL UNIQUE,
+      from_rack TEXT,
+      from_shelf TEXT,
+      to_rack TEXT,
+      to_shelf TEXT,
+      medicine_id INTEGER REFERENCES medicines(medicine_id),
+      batch_id INTEGER REFERENCES batches(batch_id),
+      qty REAL NOT NULL,
+      notes TEXT,
+      status TEXT DEFAULT 'Posted',
+      transferred_by TEXT DEFAULT 'Admin',
+      transferred_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS medicine_substitutes (
+      substitute_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      medicine_id INTEGER REFERENCES medicines(medicine_id),
+      substitute_medicine_id INTEGER REFERENCES medicines(medicine_id),
+      substitution_type TEXT DEFAULT 'Generic',
+      notes TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS notifications (
+      notification_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      message TEXT NOT NULL,
+      notification_type TEXT DEFAULT 'Info',
+      target_role TEXT DEFAULT 'All',
+      is_read INTEGER DEFAULT 0,
+      action_url TEXT,
+      created_by TEXT DEFAULT 'System',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS sales_targets (
+      target_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      target_name TEXT NOT NULL,
+      target_type TEXT DEFAULT 'Monthly',
+      period_month INTEGER,
+      period_year INTEGER NOT NULL,
+      target_amount REAL DEFAULT 0,
+      target_units INTEGER DEFAULT 0,
+      notes TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
   `);
 
   // Seed initial data if tables are empty
