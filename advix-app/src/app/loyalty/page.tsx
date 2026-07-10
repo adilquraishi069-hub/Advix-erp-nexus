@@ -142,7 +142,7 @@ export default function LoyaltyPage() {
                     <span className={h.transaction_type === 'Earned' ? 'badge-green' : 'badge-yellow'}>{h.transaction_type}</span>
                   </td>
                   <td style={{ padding: '8px 10px', fontWeight: 700, color: h.transaction_type === 'Earned' ? '#10B981' : '#FACC15' }}>
-                    {h.transaction_type === 'Earned' ? '+' : '-'}{h.points}
+                    {h.transaction_type === 'Earned' ? '+' : '-'}{h.points ?? 0}
                   </td>
                   <td style={{ padding: '8px 10px', color: '#9CA3AF', fontSize: 12 }}>{new Date(h.created_at).toLocaleDateString()}</td>
                   <td style={{ padding: '8px 10px', color: '#9CA3AF', fontSize: 12 }}>{h.notes || '-'}</td>

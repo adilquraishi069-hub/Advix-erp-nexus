@@ -6,54 +6,67 @@ export const dynamic = 'force-dynamic';
 export async function GET(request: NextRequest) {
   const db = getDb();
   const { searchParams } = new URL(request.url);
-  const customerId = searchParams.get('customer_id') || '';
+  const search = searchParams.get('search') || '';
 
-  if (customerId) {
-    const history = db.prepare('SELECT * FROM loyalty_points WHERE customer_id = ? ORDER BY created_at DESC LIMIT 50').all(Number(customerId));
-    const balance = db.prepare('SELECT COALESCE(SUM(CASE WHEN transaction_type=? THEN points ELSE -points END),0) as bal FROM loyalty_points WHERE customer_id=?').get('Earn', Number(customerId)) as { bal: number };
-    return NextResponse.json({ history, balance: balance.bal });
-  }
+  const searchParam = search ? [`%${search}%`, `%${search}%`] : [];
+  const searchWhere = search ? 'AND (c.full_name LIKE ? OR c.phone LIKE ?)' : '';
 
-  // Leaderboard
-  const leaderboard = db.prepare(`
-    SELECT lp.customer_id, c.full_name, c.phone,
-      SUM(CASE WHEN lp.transaction_type='Earn' THEN lp.points ELSE -lp.points END) as total_points,
-      COUNT(*) as transactions
+  const customers = db.prepare(`
+    SELECT lp.customer_id, c.full_name as customer_name, c.phone,
+      COALESCE(SUM(CASE WHEN lp.transaction_type='Earned' THEN lp.points ELSE 0 END),0) as total_earned,
+      COALESCE(SUM(CASE WHEN lp.transaction_type='Redeemed' THEN lp.points ELSE 0 END),0) as total_redeemed,
+      COALESCE(SUM(CASE WHEN lp.transaction_type='Earned' THEN lp.points ELSE -lp.points END),0) as balance
     FROM loyalty_points lp
     JOIN customers c ON c.customer_id = lp.customer_id
-    GROUP BY lp.customer_id ORDER BY total_points DESC LIMIT 50
+    WHERE 1=1 ${searchWhere}
+    GROUP BY lp.customer_id
+    ORDER BY balance DESC LIMIT 100
+  `).all(...searchParam);
+
+  const history = db.prepare(`
+    SELECT lp.*, c.full_name as customer_name, c.phone
+    FROM loyalty_points lp
+    JOIN customers c ON c.customer_id = lp.customer_id
+    ORDER BY lp.created_at DESC LIMIT 50
   `).all();
 
-  const stats = db.prepare(`
+  const statsRow = db.prepare(`
     SELECT
-      COUNT(DISTINCT customer_id) as enrolled_customers,
-      COALESCE(SUM(CASE WHEN transaction_type='Earn' THEN points ELSE 0 END),0) as total_earned,
-      COALESCE(SUM(CASE WHEN transaction_type='Redeem' THEN points ELSE 0 END),0) as total_redeemed
+      COUNT(DISTINCT customer_id) as total_customers,
+      COALESCE(SUM(CASE WHEN transaction_type='Earned' THEN points ELSE 0 END),0) as total_points_issued,
+      COALESCE(SUM(CASE WHEN transaction_type='Redeemed' THEN points ELSE 0 END),0) as total_redeemed,
+      COALESCE(SUM(CASE WHEN transaction_type='Earned' THEN points ELSE -points END),0) as outstanding
     FROM loyalty_points
-  `).get() as { enrolled_customers: number; total_earned: number; total_redeemed: number };
+  `).get() as { total_customers: number; total_points_issued: number; total_redeemed: number; outstanding: number };
 
-  return NextResponse.json({ leaderboard, stats });
+  return NextResponse.json({ customers, history, stats: statsRow });
 }
 
 export async function POST(request: NextRequest) {
   const db = getDb();
   const body = await request.json();
 
-  // Calculate points: 1 point per 100 AFN spent
   if (body.action === 'earn') {
     const points = Math.floor((body.amount || 0) / 100);
     if (points <= 0) return NextResponse.json({ points: 0 });
-    const balance = (db.prepare('SELECT COALESCE(SUM(CASE WHEN transaction_type=? THEN points ELSE -points END),0) as bal FROM loyalty_points WHERE customer_id=?').get('Earn', body.customer_id) as { bal: number }).bal;
-    db.prepare('INSERT INTO loyalty_points (customer_id, transaction_type, points, reference_id, reference_type, balance, notes) VALUES (?, ?, ?, ?, ?, ?, ?)').run(body.customer_id, 'Earn', points, body.reference_id || null, body.reference_type || 'Sale', balance + points, `Earned from sale AFN ${body.amount}`);
-    return NextResponse.json({ points_earned: points, new_balance: balance + points });
+    db.prepare(`
+      INSERT INTO loyalty_points (customer_id, transaction_type, points, reference_id, reference_type, notes)
+      VALUES (?, 'Earned', ?, ?, ?, ?)
+    `).run(body.customer_id, points, body.reference_id || null, 'Sale', body.notes || `Earned from sale AFN ${body.amount}`);
+    return NextResponse.json({ points_earned: points });
   }
 
   if (body.action === 'redeem') {
-    const balance = (db.prepare('SELECT COALESCE(SUM(CASE WHEN transaction_type=? THEN points ELSE -points END),0) as bal FROM loyalty_points WHERE customer_id=?').get('Earn', body.customer_id) as { bal: number }).bal;
-    if (balance < body.points) return NextResponse.json({ error: 'Insufficient points' }, { status: 400 });
-    db.prepare('INSERT INTO loyalty_points (customer_id, transaction_type, points, reference_id, reference_type, balance, notes) VALUES (?, ?, ?, ?, ?, ?, ?)').run(body.customer_id, 'Redeem', body.points, body.reference_id || null, 'Redemption', balance - body.points, body.notes || 'Points redeemed');
-    const discount = body.points; // 1 point = 1 AFN
-    return NextResponse.json({ redeemed: body.points, discount_amount: discount, new_balance: balance - body.points });
+    const balRow = db.prepare(`
+      SELECT COALESCE(SUM(CASE WHEN transaction_type='Earned' THEN points ELSE -points END),0) as bal
+      FROM loyalty_points WHERE customer_id=?
+    `).get(body.customer_id) as { bal: number };
+    if (balRow.bal < body.points) return NextResponse.json({ error: 'Insufficient points' }, { status: 400 });
+    db.prepare(`
+      INSERT INTO loyalty_points (customer_id, transaction_type, points, reference_id, reference_type, notes)
+      VALUES (?, 'Redeemed', ?, ?, 'Redemption', ?)
+    `).run(body.customer_id, body.points, body.reference_id || null, body.notes || 'Points redeemed');
+    return NextResponse.json({ redeemed: body.points, discount_amount: body.points });
   }
 
   return NextResponse.json({ error: 'Unknown action' }, { status: 400 });

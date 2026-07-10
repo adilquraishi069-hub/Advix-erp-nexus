@@ -45,9 +45,9 @@ export default function TransfersPage() {
     const r = await fetch(`/api/locations?medicine_id=${medicineId}`);
     const d = await r.json();
     setFromLocations(d.locations || d || []);
-    const br = await fetch(`/api/batches?medicine_id=${medicineId}`);
+    const br = await fetch(`/api/batches?medicine=${medicineId}`);
     const bd = await br.json();
-    setBatches(bd.batches || bd || []);
+    setBatches(Array.isArray(bd) ? bd : (bd.batches || []));
   };
 
   const save = async () => {

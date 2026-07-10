@@ -21,8 +21,14 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(substitutes);
   }
 
-  // All substitutes with medicine info
-  const query = `
+  const qParams: string[] = [];
+  let searchCond = '';
+  if (search) {
+    searchCond = 'WHERE (m1.medicine_name LIKE ? OR m1.generic_name LIKE ? OR m1.medicine_code LIKE ?)';
+    qParams.push(`%${search}%`, `%${search}%`, `%${search}%`);
+  }
+
+  const substitutes = db.prepare(`
     SELECT ms.*,
       m1.medicine_name, m1.medicine_code, m1.generic_name,
       m2.medicine_name as substitute_name, m2.medicine_code as substitute_code,
@@ -30,10 +36,9 @@ export async function GET(request: NextRequest) {
     FROM medicine_substitutes ms
     JOIN medicines m1 ON m1.medicine_id = ms.medicine_id
     JOIN medicines m2 ON m2.medicine_id = ms.substitute_medicine_id
-    ${search ? "WHERE m1.medicine_name LIKE '%" + search + "%' OR m1.generic_name LIKE '%" + search + "%'" : ''}
+    ${searchCond}
     ORDER BY m1.medicine_name LIMIT 100
-  `;
-  const substitutes = db.prepare(query).all();
+  `).all(...qParams);
   return NextResponse.json(substitutes);
 }
 

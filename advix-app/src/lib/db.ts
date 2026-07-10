@@ -444,13 +444,14 @@ function initializeSchema(db: Database.Database) {
       employee_id INTEGER PRIMARY KEY AUTOINCREMENT,
       employee_code TEXT NOT NULL UNIQUE,
       full_name TEXT NOT NULL,
-      role TEXT NOT NULL DEFAULT 'Staff',
+      designation TEXT,
+      department TEXT,
+      cnic TEXT,
       phone TEXT,
       email TEXT,
       address TEXT,
       basic_salary REAL DEFAULT 0,
-      joining_date DATE,
-      leaving_date DATE,
+      join_date DATE,
       status TEXT DEFAULT 'Active',
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
@@ -556,6 +557,16 @@ function initializeSchema(db: Database.Database) {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
   `);
+
+  // Migrate existing employees table to new schema if needed
+  const empCols = (db.prepare("PRAGMA table_info(employees)").all() as { name: string }[]).map(c => c.name);
+  if (!empCols.includes('designation')) { try { db.exec("ALTER TABLE employees ADD COLUMN designation TEXT"); } catch {} }
+  if (!empCols.includes('department')) { try { db.exec("ALTER TABLE employees ADD COLUMN department TEXT"); } catch {} }
+  if (!empCols.includes('cnic')) { try { db.exec("ALTER TABLE employees ADD COLUMN cnic TEXT"); } catch {} }
+  if (!empCols.includes('join_date') && empCols.includes('joining_date')) {
+    try { db.exec("ALTER TABLE employees ADD COLUMN join_date DATE"); } catch {}
+    try { db.exec("UPDATE employees SET join_date = joining_date WHERE join_date IS NULL"); } catch {}
+  }
 
   // Seed initial data if tables are empty
   const profileCount = db.prepare('SELECT COUNT(*) as cnt FROM pharmacy_profile').get() as { cnt: number };

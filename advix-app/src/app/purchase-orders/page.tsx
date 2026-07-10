@@ -25,7 +25,7 @@ interface POLine {
 }
 
 interface Supplier { supplier_id: number; supplier_name: string; }
-interface Medicine { medicine_id: number; medicine_name: string; medicine_code: string; default_purchase_price: number; }
+interface Medicine { medicine_id: number; medicine_name: string; medicine_code: string; average_cost: number; }
 
 export default function PurchaseOrdersPage() {
   const [orders, setOrders] = useState<PO[]>([]);
@@ -58,7 +58,7 @@ export default function PurchaseOrdersPage() {
       updated[i] = { ...updated[i], [field]: val };
       if (field === 'medicine_id') {
         const med = medicines.find(m => m.medicine_id === Number(val));
-        if (med) { updated[i].medicine_name = med.medicine_name; updated[i].medicine_code = med.medicine_code; updated[i].unit_price = med.default_purchase_price || 0; }
+        if (med) { updated[i].medicine_name = med.medicine_name; updated[i].medicine_code = med.medicine_code; updated[i].unit_price = med.average_cost || 0; }
       }
       updated[i].line_total = updated[i].ordered_qty * updated[i].unit_price;
       return updated;
@@ -78,7 +78,8 @@ export default function PurchaseOrdersPage() {
   const viewDetail = async (po: PO) => {
     const r = await fetch(`/api/purchase-orders?id=${po.po_id}`);
     const d = await r.json();
-    setDetail(d);
+    // API returns merged: {...po, lines: [...]}
+    setDetail({ ...d, lines: d.lines || [] });
   };
 
   const statusColor = (s: string) => s === 'Approved' ? 'badge-green' : s === 'Draft' ? 'badge-yellow' : s === 'Received' ? 'badge-green' : 'badge-red';
@@ -169,7 +170,7 @@ export default function PurchaseOrdersPage() {
                 {(detail.lines || []).map((l, i) => (
                   <tr key={i} style={{ borderBottom: '1px solid #1F2937' }}>
                     <td style={{ padding: '8px 10px' }}>{l.medicine_name}</td>
-                    <td style={{ padding: '8px 10px' }}>{l.ordered_qty}</td>
+                    <td style={{ padding: '8px 10px' }}>{l.ordered_qty ?? l.qty_ordered}</td>
                     <td style={{ padding: '8px 10px' }}>AFN {Number(l.unit_price).toLocaleString()}</td>
                     <td style={{ padding: '8px 10px', color: '#10B981' }}>AFN {Number(l.line_total).toLocaleString()}</td>
                   </tr>
